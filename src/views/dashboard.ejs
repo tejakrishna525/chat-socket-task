@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard</title>
+    <!-- Include your CSS files here -->
+  </head>
+  <body>
+    <%- include('layouts/header.ejs') %>
+    <h1 class="mb-4">Welcome, <%= user.username %>!</h1>
+    <div class="row">
+      <div class="col-md-3">
+        <ul class="list-group">
+          <% if(users.length > 0) { %> <% for(let i = 0; i < users.length; i++)
+          { %>
+          <li
+            class="list-group-item list-group-item-dark cursor-pointer user-list"
+            data-id="<%= users[i]._id %>"
+          >
+            <%= users[i].username %> <% if(users[i].isOnline) { %>
+            <sup class="online-status" id="<%= users[i]._id %>-status"
+              >Online</sup
+            >
+            <% } else { %>
+            <sup class="offline-status" id="<%= users[i]._id %>-status"
+              >Offline</sup
+            >
+            <% } %>
+          </li>
+          <% } %> <% } %>
+        </ul>
+      </div>
+      <div class="col-md-8">
+        <h3 class="start-head">Click to start the chat</h3>
+        <div class="chat-section" style="display: none">
+          <div id="chat-container"></div>
+          <form id="chat-form">
+            <input
+              type="text"
+              name="message"
+              placeholder="Enter the message"
+              id="message"
+              class="border"
+              required
+            />
+            <input
+              type="submit"
+              value="Send Message"
+              class="btn btn-primary"
+              id="send-message"
+              required
+            />
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Include jQuery library before your custom script -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+      var $j = jQuery.noConflict();
+      const token = "<%= token %>";
+      console.log("token", token);
+      let sender_id = "<%= user._id %>";
+      let receiver_id;
+
+      var socket = io("/user-namespace", {
+        auth: {
+          token: token,
+        },
+      });
+
+      socket.on("connect", () => {
+        console.log("Socket connected successfully");
+      });
+
+      socket.on("connect_error", (err) => {
+        console.log("Socket connection error:", err.message);
+      });
+
+      $j(document).ready(function () {
+        $j(".user-list").click(function () {
+          let userId = $j(this).attr("data-id");
+          receiver_id = userId;
+
+          $j(".start-head").hide();
+          $j(".chat-section").show();
+          socket.emit("existsChat", {
+            sender_id: sender_id,
+            receiver_id: receiver_id,
+          });
+        });
+
+        $j("#chat-form").submit(function (event) {
+          event.preventDefault();
+          console.log("xsiajkwas");
+          let message = $j("#message").val();
+          $j.ajax({
+            url: "/save-chat",
+            method: "POST",
+            data: {
+              sender_id: sender_id,
+              receiver_id: receiver_id,
+              message: message,
+            },
+            success: function (response) {
+              console.log(response);
+              if (response.success) {
+                console.log("success", response);
+                $j("#message").val("");
+                let chat = response.data.content;
+                console.log("dbewkjdsn", chat);
+                let html =
+                  `
+                  <div class="current-user-chat">
+                    <h5>` +
+                  chat +
+                  `</h5>
+                  </div>
+                `;
+                $("#chat-container").append(html);
+                if (socket.connected) {
+                  socket.emit("newChat", response.data);
+                } else {
+                  console.log("Socket not connected");
+                }
+              } else {
+                alert("Something is wrong");
+              }
+            },
+            error: function (error) {
+              console.log("Error:", error);
+            },
+          });
+        });
+      });
+
+      socket.on("getOnlineUser", (data) => {
+        console.log("getOnlineUser", data);
+        const userStatusElement = $j("#" + data.user_id + "-status");
+        if (userStatusElement.length) {
+          userStatusElement.text("Online");
+          userStatusElement
+            .removeClass("offline-status")
+            .addClass("online-status");
+        }
+      });
+
+      socket.on("getOfflineUser", (data) => {
+        console.log("getOfflineUser", data);
+        const userStatusElement = $j("#" + data.user_id + "-status");
+        if (userStatusElement.length) {
+          userStatusElement.text("Offline");
+          userStatusElement
+            .removeClass("online-status")
+            .addClass("offline-status");
+        }
+      });
+
+      socket.on("loadnewChat", function (data) {
+        if (sender_id == data.receiverId && receiver_id == data.senderId) {
+          console.log("loadnewChat", data);
+          let html =
+            `<div class="distant-user-chat">
+         <h5>` +
+            data.content +
+            `</h5>
+                  </div>
+                `;
+          $("#chat-container").append(html);
+        }
+      });
+
+      // load old chats
+
+      socket.on("loadchats", function (data) {
+        console.log("data", data.chats);
+        $("#chat-container").html(""); // Clear the chat container
+        let chats = data.chats;
+        let html = "";
+        for (let i = 0; i < chats.length; i++) {
+          let addClass = "";
+          if (chats[i].senderId === sender_id) {
+            addClass = "current-user-chat";
+          } else {
+            addClass = "distant-user-chat";
+          }
+          html += `<div class="${addClass}"> 
+            <h5>${chats[i].content}</h5>
+            </div>`;
+        }
+        console.log("html", html);
+        $("#chat-container").append(html); // Append the generated HTML to the chat container
+      });
+    </script>
+
+    <%- include('layouts/footer.ejs') %>
+  </body>
+</html>
